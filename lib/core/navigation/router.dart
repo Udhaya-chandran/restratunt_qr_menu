@@ -11,9 +11,12 @@ import '../../features/admin/presentation/restaurant_list_screen.dart';
 import '../../features/admin/presentation/restaurant_form_screen.dart';
 import '../../features/admin/presentation/category_list_screen.dart';
 import '../../features/admin/presentation/category_form_screen.dart';
+import '../../features/customer/presentation/web_home_screen.dart';
 import '../../features/admin/presentation/menu_item_list_screen.dart';
 import '../../features/admin/presentation/menu_item_form_screen.dart';
 import '../../features/admin/qr_generator/qr_generator_screen.dart';
+import '../../features/admin/presentation/restaurant_details_screen.dart';
+import '../../../core/providers/supabase_providers.dart';
 
 // Customer Web App Router
 final customerRouterProvider = Provider<GoRouter>((ref) {
@@ -22,18 +25,31 @@ final customerRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) => const CustomerLandingScreen(),
+        builder: (context, state) => const WebHomeScreen(),
       ),
       GoRoute(
-        path: '/categories',
-        builder: (context, state) => const CategoriesScreen(),
-      ),
-      GoRoute(
-        path: '/menu/:categoryId',
+        path: '/r/:slug',
         builder: (context, state) {
-          final id = state.pathParameters['categoryId'] ?? '1';
-          return MenuScreen(categoryId: id);
+          final slug = state.pathParameters['slug']!;
+          return CustomerLandingScreen(restaurantSlug: slug);
         },
+        routes: [
+          GoRoute(
+            path: 'categories',
+            builder: (context, state) {
+              final slug = state.pathParameters['slug']!;
+              return CategoriesScreen(restaurantSlug: slug);
+            },
+          ),
+          GoRoute(
+            path: 'menu/:categoryId',
+            builder: (context, state) {
+              final slug = state.pathParameters['slug']!;
+              final categoryId = state.pathParameters['categoryId']!;
+              return MenuScreen(restaurantSlug: slug, categoryId: categoryId);
+            },
+          ),
+        ],
       ),
     ],
   );
@@ -59,10 +75,34 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/restaurants',
         builder: (context, state) => const RestaurantListScreen(),
-      ),
-      GoRoute(
-        path: '/restaurants/add',
-        builder: (context, state) => const RestaurantFormScreen(),
+        routes: [
+          GoRoute(
+            path: 'add',
+            builder: (context, state) => const RestaurantFormScreen(),
+          ),
+          GoRoute(
+            path: ':id',
+            builder: (context, state) {
+              final id = state.pathParameters['id'] ?? '';
+              return RestaurantDetailsScreen(restaurantId: id);
+            },
+          ),
+          GoRoute(
+            path: 'edit/:id',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return FutureBuilder<Map<String, dynamic>>(
+                future: ref.read(supabaseServiceProvider).getRestaurants().then((list) => list.firstWhere((r) => r['id'] == id)),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return RestaurantFormScreen(restaurant: snapshot.data);
+                  }
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                },
+              );
+            },
+          ),
+        ],
       ),
       GoRoute(
         path: '/admin-categories',
@@ -73,6 +113,21 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CategoryFormScreen(),
       ),
       GoRoute(
+        path: '/admin-categories/edit/:id',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return FutureBuilder<Map<String, dynamic>>(
+            future: ref.read(supabaseServiceProvider).getAllCategories().then((list) => list.firstWhere((c) => c['id'] == id)),
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                return CategoryFormScreen(category: snapshot.data);
+              }
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            },
+          );
+        },
+      ),
+      GoRoute(
         path: '/admin-menu',
         builder: (context, state) => const MenuItemListScreen(),
       ),
@@ -81,8 +136,27 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const MenuItemFormScreen(),
       ),
       GoRoute(
+        path: '/admin-menu/edit/:id',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return FutureBuilder<Map<String, dynamic>>(
+            future: ref.read(supabaseServiceProvider).getAllMenuItems().then((list) => list.firstWhere((i) => i['id'] == id)),
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                return MenuItemFormScreen(item: snapshot.data);
+              }
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            },
+          );
+        },
+      ),
+      GoRoute(
         path: '/qr-generator',
-        builder: (context, state) => const QrGeneratorScreen(),
+        builder: (context, state) {
+          final slug = state.uri.queryParameters['slug'];
+          final name = state.uri.queryParameters['name'];
+          return QrGeneratorScreen(restaurantSlug: slug, restaurantName: name);
+        },
       ),
     ],
   );

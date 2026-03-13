@@ -1,22 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/providers/supabase_providers.dart';
 
-class AdminSplashScreen extends StatefulWidget {
+class AdminSplashScreen extends ConsumerStatefulWidget {
   const AdminSplashScreen({super.key});
 
   @override
-  State<AdminSplashScreen> createState() => _AdminSplashScreenState();
+  ConsumerState<AdminSplashScreen> createState() => _AdminSplashScreenState();
 }
 
-class _AdminSplashScreenState extends State<AdminSplashScreen> {
+class _AdminSplashScreenState extends ConsumerState<AdminSplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) context.go('/signin');
-    });
+    _checkAuth();
+  }
+
+  Future<void> _checkAuth() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+
+    final user = ref.read(supabaseServiceProvider).currentUser;
+    if (user != null) {
+      context.go('/dashboard');
+    } else {
+      context.go('/signin');
+    }
   }
 
   @override

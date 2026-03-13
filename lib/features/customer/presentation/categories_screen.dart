@@ -1,141 +1,224 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter/rendering.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/providers/supabase_providers.dart';
 
-class CategoriesScreen extends StatelessWidget {
-  const CategoriesScreen({super.key});
+class CategoriesScreen extends ConsumerStatefulWidget {
+  final String restaurantSlug;
+  const CategoriesScreen({super.key, required this.restaurantSlug});
+
+  @override
+  ConsumerState<CategoriesScreen> createState() => _CategoriesScreenState();
+}
+
+class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final restaurantAsync = ref.watch(currentRestaurantProvider(widget.restaurantSlug));
+
     return Scaffold(
-      backgroundColor: const Color(0xFF1C1813), // Deep brown/black background
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            backgroundColor: const Color(0xFF1C1813),
-            floating: true,
-            toolbarHeight: 80,
-            title: Text(
-              'Our Menu',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: AppTheme.primaryGold,
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            centerTitle: true,
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(130),
+      backgroundColor: const Color(0xFF1C1813),
+      body: restaurantAsync.when(
+        data: (restaurant) {
+          final isActive = restaurant['is_active'] ?? true;
+          final categoriesAsync = ref.watch(categoriesProvider(restaurant['id']));
+
+          if (!isActive) {
+            return Center(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Search Bar
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2B251F),
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: const TextField(
-                        decoration: InputDecoration(
-                          hintText: 'Find your favorite...',
-                          hintStyle: TextStyle(color: Colors.white38),
-                          prefixIcon: Icon(Icons.search, color: AppTheme.primaryGold),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                        ),
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    ),
+                  const Icon(Icons.event_busy, size: 80, color: Colors.redAccent),
+                  const SizedBox(height: 24),
+                  Text(
+                    restaurant['name'] ?? 'Restaurant',
+                    style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
                   ),
-                  // Filter Chips
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    child: Row(
-                      children: [
-                        _buildFilterChip('All', isSelected: true),
-                        _buildFilterChip('Starters'),
-                        _buildFilterChip('Main Course'),
-                        _buildFilterChip('Breads'),
-                        _buildFilterChip('Desserts'),
-                        _buildFilterChip('Drinks'),
-                        _buildFilterChip('Combos'),
-                      ],
-                    ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'TEMPORARILY CLOSED',
+                    style: TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2),
+                  ),
+                  const SizedBox(height: 32),
+                  TextButton.icon(
+                    onPressed: () => context.go('/r/${widget.restaurantSlug}'),
+                    icon: const Icon(Icons.arrow_back, color: AppTheme.primaryGold),
+                    label: const Text('BACK', style: TextStyle(color: AppTheme.primaryGold)),
                   ),
                 ],
               ),
-            ),
-          ),
-          
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            sliver: SliverLayoutBuilder(
-              builder: (BuildContext context, SliverConstraints constraints) {
-                final double width = constraints.crossAxisExtent;
-                // Desktop: 4 cols, Tablet: 3 cols, Mobile: 2 cols
-                final int crossAxisCount = width > 1024 ? 4 : width > 600 ? 3 : 2;
-                
-                return SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: width > 600 ? 0.85 : 0.95, // taller on desktop, squarer on mobile
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final cat = _dummyCategories[index];
-                      return _CategoryCard(category: cat, index: index);
-                    },
-                    childCount: _dummyCategories.length,
-                  ),
-                );
-              },
-            ),
-          ),
-          
-          // Bottom padding for the floating bar
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
-      ),
-    );
-  }
+            );
+          }
 
-  Widget _buildFilterChip(String label, {bool isSelected = false}) {
-    return Container(
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-      decoration: BoxDecoration(
-        color: isSelected ? AppTheme.primaryGold : Colors.transparent,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppTheme.primaryGold),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: isSelected ? Colors.black : AppTheme.primaryGold,
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-        ),
+          return RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(currentRestaurantProvider(widget.restaurantSlug));
+              ref.invalidate(categoriesProvider(restaurant['id']));
+              await ref.read(currentRestaurantProvider(widget.restaurantSlug).future);
+              await ref.read(categoriesProvider(restaurant['id']).future);
+            },
+            color: AppTheme.primaryGold,
+            backgroundColor: const Color(0xFF2B251F),
+            child: CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  backgroundColor: const Color(0xFF1C1813),
+                  floating: true,
+                  toolbarHeight: 80,
+                  centerTitle: true,
+                  automaticallyImplyLeading: false, // Removed back arrow as requested
+                  title: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        restaurant['name']?.toUpperCase() ?? 'OUR MENU',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              color: AppTheme.primaryGold,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 2,
+                            ),
+                      ),
+                      if (restaurant['description'] != null && (restaurant['description'] as String).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            restaurant['description'],
+                            style: const TextStyle(
+                              color: Colors.white60,
+                              fontSize: 12,
+                              letterSpacing: 1.1,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                    ],
+                  ),
+                  bottom: PreferredSize(
+                    preferredSize: const Size.fromHeight(80),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2B251F),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+                          decoration: InputDecoration(
+                            hintText: 'Find your favorite...',
+                            hintStyle: const TextStyle(color: Colors.white38),
+                            prefixIcon: const Icon(Icons.search, color: AppTheme.primaryGold),
+                            suffixIcon: _searchQuery.isNotEmpty 
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, color: Colors.white38),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() => _searchQuery = '');
+                                  },
+                                )
+                              : null,
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                          ),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                
+                categoriesAsync.when(
+                  data: (categories) {
+                    final filteredCategories = categories.where((c) {
+                      final name = (c['name'] ?? '').toString().toLowerCase();
+                      return name.contains(_searchQuery);
+                    }).toList();
+
+                    if (filteredCategories.isEmpty) {
+                      return SliverFillRemaining(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.search_off, size: 64, color: Colors.white24),
+                              const SizedBox(height: 16),
+                              Text(
+                                _searchQuery.isEmpty ? 'No categories available' : 'No categories match "$_searchQuery"',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+  
+                    return SliverPadding(
+                      padding: const EdgeInsets.all(24),
+                      sliver: SliverGrid(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: MediaQuery.of(context).size.width > 900 
+                            ? 4 
+                            : MediaQuery.of(context).size.width > 600 ? 3 : 2,
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
+                          childAspectRatio: 0.85,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final category = filteredCategories[index];
+                            return _CategoryCard(
+                              category: category, 
+                              index: index,
+                              restaurantSlug: widget.restaurantSlug,
+                            );
+                          },
+                          childCount: filteredCategories.length,
+                        ),
+                      ),
+                    );
+                  },
+                  loading: () => const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator(color: AppTheme.primaryGold))),
+                  error: (err, _) => SliverToBoxAdapter(child: Center(child: Text('Error: $err', style: const TextStyle(color: Colors.red)))),
+                ),
+                
+                const SliverToBoxAdapter(child: SizedBox(height: 100)),
+              ],
+            ),
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator(color: AppTheme.primaryGold)),
+        error: (err, _) => Center(child: Text('Error: $err', style: const TextStyle(color: Colors.red))),
       ),
     );
   }
 }
 
 class _CategoryCard extends StatelessWidget {
-  final Map<String, String> category;
+  final Map<String, dynamic> category;
   final int index;
+  final String restaurantSlug;
 
-  const _CategoryCard({required this.category, required this.index});
+  const _CategoryCard({required this.category, required this.index, required this.restaurantSlug});
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.go('/menu/${category['id']}'),
+      onTap: () => context.go('/r/$restaurantSlug/menu/${category['id']}'),
       borderRadius: BorderRadius.circular(24),
       child: Container(
         decoration: BoxDecoration(
@@ -147,27 +230,31 @@ class _CategoryCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Background Image
-              Image.network(
-                category['image']!,
+              CachedNetworkImage(
+                imageUrl: category['image_url'] ?? '',
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF221C14), child: const Icon(Icons.fastfood, size: 50, color: Colors.white24)),
+                placeholder: (context, url) => Container(
+                  color: const Color(0xFF221C14),
+                  child: const Center(
+                    child: Icon(Icons.fastfood, size: 50, color: AppTheme.primaryGold),
+                  ),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  color: const Color(0xFF221C14),
+                  child: const Center(
+                    child: Icon(Icons.fastfood, size: 50, color: AppTheme.primaryGold),
+                  ),
+                ),
               ),
-              // Dark Gradient Overlay for text readability
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.8),
-                    ],
-                    stops: const [0.5, 1.0],
+                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.8)],
                   ),
                 ),
               ),
-              // Texts at the bottom
               Positioned(
                 bottom: 20,
                 left: 20,
@@ -176,33 +263,10 @@ class _CategoryCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      category['name']!,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    Text(
-                      category['subtitle']!,
-                      style: const TextStyle(color: AppTheme.primaryGold, fontSize: 12),
+                      category['name'] ?? 'Untitled',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
                     ),
                   ],
-                ),
-              ),
-              // Item count badge top right
-              Positioned(
-                top: 16,
-                right: 16,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGold,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    "${category['count']} ITEMS",
-                    style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold),
-                  ),
                 ),
               ),
             ],
@@ -212,12 +276,3 @@ class _CategoryCard extends StatelessWidget {
     );
   }
 }
-
-final _dummyCategories = [
-  {'id': '1', 'name': 'Starters', 'subtitle': 'Elegant Beginnings', 'count': '12', 'image': 'https://picsum.photos/id/1080/400/500'},
-  {'id': '2', 'name': 'Main Course', 'subtitle': "Chef's Signature", 'count': '24', 'image': 'https://picsum.photos/id/292/400/500'},
-  {'id': '3', 'name': 'Breads', 'subtitle': 'Oven Fresh', 'count': '8', 'image': 'https://picsum.photos/id/429/400/500'},
-  {'id': '4', 'name': 'Desserts', 'subtitle': 'Sweet Indulgence', 'count': '15', 'image': 'https://picsum.photos/id/431/400/500'},
-  {'id': '5', 'name': 'Drinks', 'subtitle': 'Fine Spirits', 'count': '32', 'image': 'https://picsum.photos/id/432/400/500'},
-  {'id': '6', 'name': 'Combos', 'subtitle': 'Perfect Pairings', 'count': '6', 'image': 'https://picsum.photos/id/433/400/500'},
-];
